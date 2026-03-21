@@ -1,0 +1,15 @@
+{
+  "projects": [
+    {
+      "id": "company-policies",
+      "name": "Company Policies",
+      "description": "Contains all company's policies",
+      "created_at": "2026-03-21",
+      "doc_count": 2,
+      "docs": [
+        "JETIR1905061.pdf",
+        "Microsoft 2024 Annual Report.pdf"
+      ]
+    }
+  ]
+}

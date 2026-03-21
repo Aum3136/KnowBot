@@ -1,0 +1,14 @@
+google.genai
+langchain
+langchain-community
+langchain-google-genai
+faiss-cpu
+pypdf2
+streamlit
+sentence-transformers
+python-docx
+openpyxl
+python-pptx
+openai-whisper
+python-dotenv
+unstructured
