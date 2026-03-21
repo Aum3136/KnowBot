@@ -18,7 +18,7 @@ Built for IT companies, KnowBot combines **RAG-based document intelligence**, **
 - Supports project-scoped search — ask within a specific project or across all
 
 ### Project Management
-- Create projects (HR Policies, Engineering, Client — Apprn, etc.)
+- Create projects (HR Policies, Engineering, Client Projects, etc.)
 - Upload PDF, PPTX, and XLSX documents per project
 - Rename and delete projects and individual files
 - Documents automatically embedded into Qdrant vector database on upload
