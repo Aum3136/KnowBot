@@ -41,6 +41,16 @@ export default function App() {
   const sessionIdRef = useRef(null)
   const timerRef = useRef(null)
 
+  // Unique chat session ID — persists across page refreshes, resets on new tab
+  const chatSessionIdRef = useRef(
+    sessionStorage.getItem("knowbot_session_id") ||
+    (() => {
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2)
+      sessionStorage.setItem("knowbot_session_id", id)
+      return id
+    })()
+  )
+
   // Register WAV encoder once on mount
   useEffect(() => {
     const setup = async () => {
@@ -75,7 +85,8 @@ export default function App() {
     try {
       const res = await axios.post(`${API}/ask`, {
         question,
-        project_id: selectedProject?.id || null
+        session_id: chatSessionIdRef.current,
+        ...(selectedProject?.id && { project_id: selectedProject.id })
       })
       setMessages(prev => [...prev, {
         role: "bot",
@@ -92,6 +103,17 @@ export default function App() {
       }])
     }
     setLoading(false)
+  }
+
+  // ── Clear chat session ──
+  const clearChat = async () => {
+    try {
+      await axios.delete(`${API}/chat/session/${chatSessionIdRef.current}`)
+    } catch {}
+    const newId = Date.now().toString(36) + Math.random().toString(36).slice(2)
+    sessionStorage.setItem("knowbot_session_id", newId)
+    chatSessionIdRef.current = newId
+    setMessages([])
   }
 
   // ── Audio file handler ──
@@ -238,6 +260,17 @@ export default function App() {
               <span className="channel-name">document-qa</span>
               <div className="channel-divider" />
               <span className="channel-desc">Ask anything about company policies and processes</span>
+              <button
+                onClick={clearChat}
+                style={{
+                  marginLeft: "auto", background: "none",
+                  border: "1px solid #2c2d30", color: "#4b5563",
+                  borderRadius: "6px", padding: "4px 12px",
+                  fontSize: "12px", cursor: "pointer"
+                }}
+              >
+                Clear chat
+              </button>
             </div>
 
             <div className="messages">

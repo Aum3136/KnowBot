@@ -1,7 +1,17 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()  # load .env FIRST
+
+# LangSmith tracing — MUST use LANGCHAIN_ prefix, not LANGSMITH_
+os.environ["LANGCHAIN_TRACING_V2"] = "true"
+os.environ["LANGCHAIN_API_KEY"]    = os.getenv("LANGSMITH_API_KEY", "")
+os.environ["LANGCHAIN_PROJECT"]    = "KnowBot"
+os.environ["LANGCHAIN_ENDPOINT"]   = "https://api.smith.langchain.com"
+
 import json
 import shutil
 from datetime import datetime
+from typing import Optional
 from fastapi import FastAPI, UploadFile, File, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +19,10 @@ from dotenv import load_dotenv
 from rag_chain import load_rag_chain, get_answer
 from sarvam_transcribe import transcribe_chunk, transcribe_file, generate_meeting_notes
 from ingest import ingest_project, delete_project_vectors, delete_file_vectors
+from storage import upload_file_to_s3, delete_file_from_s3, delete_project_from_s3
+
+import os
+
 
 load_dotenv()
 
@@ -58,7 +72,8 @@ def invalidate_rag_cache(project_id: str = None):
 # ── Models ──
 class QuestionRequest(BaseModel):
     question: str
-    project_id: str = None   # None = search all projects
+    project_id: Optional[str] = None
+    session_id: str = "default"
 
 class CreateProjectRequest(BaseModel):
     name: str
@@ -77,7 +92,12 @@ class EndMeetingRequest(BaseModel):
 @app.post("/ask")
 async def ask_question(req: QuestionRequest):
     chain_tuple = get_rag(req.project_id)
-    answer, sources, _ = get_answer(chain_tuple, req.question)
+    answer, sources, _ = get_answer(
+        chain_tuple,
+        req.question,
+        session_id=req.session_id,
+        project_id=req.project_id
+    )
     return {"answer": answer, "sources": sources}
 
 # ══════════════════════════════════════
@@ -139,23 +159,71 @@ async def delete_project(project_id: str):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    # Delete vectors from Qdrant
+    # 1. Delete vectors from Qdrant
     try:
         delete_project_vectors(project_id)
+        print(f"[QDRANT] Deleted vectors for project: {project_id}")
     except Exception as e:
-        print(f"Vector delete warning: {e}")
+        print(f"[QDRANT] Delete warning: {e}")
 
-    # Delete project folder
+    # 2. Delete all files from S3
+    try:
+        delete_project_from_s3(project_id)
+        print(f"[S3] Deleted all files for project: {project_id}")
+    except Exception as e:
+        print(f"[S3] Delete warning: {e}")
+
+    # 3. Delete local folder
     folder = os.path.join(PROJECTS_DIR, project_id)
     if os.path.exists(folder):
         shutil.rmtree(folder)
+        print(f"[LOCAL] Deleted folder: {folder}")
 
-    # Remove from projects.json
+    # 4. Remove from projects.json
     data["projects"] = [p for p in data["projects"] if p["id"] != project_id]
     save_projects(data)
     invalidate_rag_cache(project_id)
 
     return {"message": f"Project '{project_id}' deleted successfully."}
+
+
+@app.delete("/projects/{project_id}/docs/{filename}")
+async def delete_document(project_id: str, filename: str):
+    data = load_projects()
+    project = next((p for p in data["projects"] if p["id"] == project_id), None)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    # 1. Delete from S3
+    try:
+        delete_file_from_s3(project_id, filename)
+        print(f"[S3] Deleted: {filename}")
+    except Exception as e:
+        print(f"[S3] Delete warning: {e}")
+
+    # 2. Delete from local disk
+    file_path = os.path.join(PROJECTS_DIR, project_id, "docs", filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        print(f"[LOCAL] Deleted: {file_path}")
+
+    # 3. Delete vectors from Qdrant
+    try:
+        delete_file_vectors(project_id, filename)
+        print(f"[QDRANT] Deleted vectors for: {filename}")
+    except Exception as e:
+        print(f"[QDRANT] Delete warning: {e}")
+
+    # 4. Update projects.json
+    project["docs"] = [d for d in project["docs"] if d != filename]
+    project["doc_count"] = len(project["docs"])
+    save_projects(data)
+    invalidate_rag_cache(project_id)
+
+    return {"message": f"{filename} deleted from project {project_id}."}
+
+
+
 
 @app.post("/projects/{project_id}/upload")
 async def upload_to_project(
@@ -167,7 +235,6 @@ async def upload_to_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found.")
 
-    # Validate file format
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_EXTS:
         raise HTTPException(
@@ -175,21 +242,33 @@ async def upload_to_project(
             detail=f"File format '{ext}' is not supported. Allowed: PDF, PPTX, XLSX"
         )
 
-    # Save file to project docs folder
+    # Save temporarily
+    os.makedirs("temp", exist_ok=True)
+    temp_path = os.path.join("temp", file.filename)
+    file_bytes = await file.read()
+    with open(temp_path, "wb") as f:
+        f.write(file_bytes)
+
+    # Upload to S3 — permanent cloud storage
+    upload_file_to_s3(temp_path, project_id, file.filename)
+
+    # Also save locally for ingestion into Qdrant
     docs_folder = os.path.join(PROJECTS_DIR, project_id, "docs")
     os.makedirs(docs_folder, exist_ok=True)
-    file_path = os.path.join(docs_folder, file.filename)
+    local_path = os.path.join(docs_folder, file.filename)
+    with open(local_path, "wb") as f:
+        f.write(file_bytes)
 
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
+    # Clean up temp file
+    if os.path.exists(temp_path):
+        os.remove(temp_path)
 
     print(f"Saved: {file.filename} to project {project_id}")
 
-    # Re-index this project in Qdrant
+    # Ingest into Qdrant
     success = ingest_project(project_id, project["name"])
 
     if success:
-        # Update metadata
         if file.filename not in project["docs"]:
             project["docs"].append(file.filename)
             project["doc_count"] = len(project["docs"])
@@ -201,32 +280,6 @@ async def upload_to_project(
         }
     else:
         raise HTTPException(status_code=500, detail="Indexing failed.")
-
-@app.delete("/projects/{project_id}/docs/{filename}")
-async def delete_document(project_id: str, filename: str):
-    data = load_projects()
-    project = next((p for p in data["projects"] if p["id"] == project_id), None)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found.")
-
-    # Delete file from disk
-    file_path = os.path.join(PROJECTS_DIR, project_id, "docs", filename)
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-    # Delete vectors from Qdrant
-    try:
-        delete_file_vectors(project_id, filename)
-    except Exception as e:
-        print(f"Vector delete warning: {e}")
-
-    # Update metadata
-    project["docs"] = [d for d in project["docs"] if d != filename]
-    project["doc_count"] = len(project["docs"])
-    save_projects(data)
-    invalidate_rag_cache(project_id)
-
-    return {"message": f"{filename} deleted from project {project_id}."}
 
 # ══════════════════════════════════════
 # ── Meeting Intelligence ──
@@ -285,3 +338,8 @@ async def transcribe_meeting_file(
     notes["full_transcript"] = transcript
     return notes
 
+@app.delete("/chat/session/{session_id}")
+async def clear_chat_session(session_id: str):
+    from memory import chat_memory
+    chat_memory.clear_session(session_id)
+    return {"message": f"Session {session_id} cleared."}

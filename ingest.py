@@ -106,8 +106,8 @@ def ingest_project(project_id: str, project_name: str):
 
     # Split into chunks
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=50
+        chunk_size=1500,
+        chunk_overlap=500
     )
     chunks = splitter.split_documents(docs)
     print(f"Total chunks: {len(chunks)}")

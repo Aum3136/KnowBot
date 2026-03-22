@@ -10,6 +10,41 @@
         "JETIR1905061.pdf",
         "Microsoft 2024 Annual Report.pdf"
       ]
+    },
+    {
+      "id": "client-documents",
+      "name": "Client Documents",
+      "description": "Contains information of upcoming client projects",
+      "created_at": "2026-03-22",
+      "doc_count": 2,
+      "docs": [
+        "Budget SOP.pdf",
+        "Manual-of-Administration-Vol-I-2ND-edition-20200627104840.pdf"
+      ]
+    },
+    {
+      "id": "asian-paints",
+      "name": "Asian Paints",
+      "description": "Client porject made for paint industry",
+      "created_at": "2026-03-22",
+      "doc_count": 3,
+      "docs": [
+        "asian paints.pdf",
+        "Mobile App User Stories.pdf",
+        "Saffro mellow tracking.xlsx"
+      ]
+    },
+    {
+      "id": "paint-project",
+      "name": "Paint Project",
+      "description": "Contains all the documents related to the paint project.",
+      "created_at": "2026-03-22",
+      "doc_count": 3,
+      "docs": [
+        "asian paints.pdf",
+        "Mobile App User Stories.pdf",
+        "Saffro mellow tracking.xlsx"
+      ]
     }
   ]
 }
