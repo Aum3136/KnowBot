@@ -7,7 +7,7 @@ import "./App.css"
 import Projects from "./Projects"
 
 
-const API = "http://13.60.202.50:8000"
+const API = "https://melba-austere-fraudfully.ngrok-free.dev"
 
 function formatTime() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })

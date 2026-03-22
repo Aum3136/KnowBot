@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react"
 import axios from "axios"
 
-const API = "http://13.60.202.50:8000"
+const API = "https://melba-austere-fraudfully.ngrok-free.dev"
 const ALLOWED = [".pdf", ".pptx", ".xlsx"]
 
 function getExt(filename) {
