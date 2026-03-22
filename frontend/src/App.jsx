@@ -6,7 +6,8 @@ import { connect } from "extendable-media-recorder-wav-encoder"
 import "./App.css"
 import Projects from "./Projects"
 
-const API = "http://localhost:8000"
+
+const API = "http://13.60.202.50:8000"
 
 function formatTime() {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
